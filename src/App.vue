@@ -22,7 +22,6 @@ onMounted(async () => {
       return;
     }
 
-    // Verify if it's a web page, not a chrome:// internal page
     if (tab.url?.startsWith('chrome://') || tab.url?.startsWith('chrome-extension://')) {
       pageInfo.value = {
         title: tab.title || "Chrome System Page",
