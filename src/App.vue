@@ -1,7 +1,9 @@
+import type { PageInfo } from "./types/pageInfo"
+
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
 
-const pageInfo = ref({
+const pageInfo = ref<PageInfo>({
   title: "Not detected",
   url: "No active tab URL",
   scripts: 0,
