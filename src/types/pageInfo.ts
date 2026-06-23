@@ -4,4 +4,5 @@ export interface PageInfo {
     scripts: number;
     links: number;
     images: number;
+    technologies: string[];
 }

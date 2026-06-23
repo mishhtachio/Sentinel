@@ -1,14 +1,14 @@
-import type { PageInfo } from "./types/pageInfo"
-
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
+import type { PageInfo } from "./types/pageInfo";
 
 const pageInfo = ref<PageInfo>({
   title: "Not detected",
   url: "No active tab URL",
   scripts: 0,
   links: 0,
-  images: 0
+  images: 0,
+  technologies: []
 });
 
 const errorMsg = ref("");
@@ -29,7 +29,8 @@ onMounted(async () => {
         url: tab.url,
         scripts: 0,
         links: 0,
-        images: 0
+        images: 0,
+        technologies: []
       };
       errorMsg.value = "Cannot audit internal browser pages.";
       return;
@@ -50,7 +51,7 @@ onMounted(async () => {
 
 <template>
   <div class="app-container">
-    <Header>
+    <!-- Header -->
     <header class="header">
       <div class="brand">
         <span class="icon-shield text-cyan-400"></span>
@@ -67,7 +68,7 @@ onMounted(async () => {
       </div>
     </header>
 
-    <Main Card>
+    <!-- Main Card -->
     <main class="flex-grow flex flex-col gap-4">
       <div class="panel">
         <div>
@@ -92,28 +93,28 @@ onMounted(async () => {
         </div>
       </div>
 
-      <Statistics Panel>
+      <!-- Statistics Panel -->
       <div class="panel">
         <h3 class="panel-title">
           Resources Scanned
         </h3>
 
         <div class="stat-grid">
-          <Scripts>
+          <!-- Scripts -->
           <div class="stat-card">
             <span class="icon-code text-cyan-400 mb-1"></span>
             <span class="stat-val">{{ pageInfo.scripts }}</span>
             <span class="stat-lbl">Scripts</span>
           </div>
 
-          <Links>
+          <!-- Links -->
           <div class="stat-card">
             <span class="icon-link text-blue-400 mb-1"></span>
             <span class="stat-val">{{ pageInfo.links }}</span>
             <span class="stat-lbl">Links</span>
           </div>
 
-          <Images>
+          <!-- Images -->
           <div class="stat-card">
             <span class="icon-image text-indigo-400 mb-1"></span>
             <span class="stat-val">{{ pageInfo.images }}</span>
@@ -122,14 +123,30 @@ onMounted(async () => {
         </div>
       </div>
 
-      <Warning Banner if error occurs>
+      <!-- Technologies Scanned -->
+      <div class="panel">
+        <h3 class="panel-title">
+          Detected Technologies
+        </h3>
+
+        <div class="flex flex-wrap gap-2 mt-1">
+          <span v-for="tech in pageInfo.technologies" :key="tech" class="px-2.5 py-1 rounded bg-slate-950/60 border border-slate-800 text-xs font-semibold text-cyan-400">
+            {{ tech }}
+          </span>
+          <span v-if="!pageInfo.technologies || pageInfo.technologies.length === 0" class="text-xs text-slate-500 italic py-1">
+            No frontend technologies detected
+          </span>
+        </div>
+      </div>
+
+      <!-- Warning Banner if error occurs -->
       <div v-if="errorMsg" class="banner-warning">
         <span class="icon-warning text-amber-300 shrink-0"></span>
         <span class="banner-text">{{ errorMsg }}</span>
       </div>
     </main>
 
-    <Footer>
+    <!-- Footer -->
     <footer class="footer">
       <span>Version 1.0.0</span>
       <span>Secured by Sentinel</span>
