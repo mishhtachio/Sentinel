@@ -1,5 +1,5 @@
 console.log("Sentinel content script loaded");
-import { detectTechnologies } from "../analyze/techs";
+import { scanForFrontendStack } from "../analyze/techs";
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     if (message.type === "GET_PAGE_INFO") {
@@ -10,7 +10,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
             scripts: document.scripts.length,
             links: document.links.length,
             images: document.images.length,
-            technologies: detectTechnologies(),
+            technologies: scanForFrontendStack(),
         };
         sendResponse(currentPageInfo);
     }

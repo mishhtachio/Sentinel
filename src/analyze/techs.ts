@@ -1,123 +1,180 @@
-export function detectTechnologies(): string[] {
-    const techs: string[] = [];
+export function scanForFrontendStack(): string[] {
+    const identifiedLibrariesList: string[] = [];
 
-    //React
-    const hasReactDOM =
-        document.querySelector("#root") ||
-        document.querySelector("#react-root") ||
-        document.querySelector("[data-reactroot]") ||
-        document.querySelector("[data-react-rid]");
+    //REACT
+    const reactMountIds = ['root', 'react-root', 'react-app'];
+    let reactDetected = false;
 
-    const hasReactScripts = Array.from(document.scripts).some(script => {
-        const src = script.src.toLowerCase();
-        return src.includes("react") || src.includes("react-dom") || src.includes("next/static");
-    });
-
-    if (hasReactDOM || hasReactScripts) {
-        techs.push("React");
+    //Check if any standard React container is present in the DOM
+    for (const id of reactMountIds) {
+        if (document.getElementById(id)) {
+            reactDetected = true;
+            break;
+        }
     }
 
-    //Vue
-    const hasVueDOM =
-        document.querySelector("[data-v-app]") ||
-        document.querySelector("#app[data-v-") ||
-        document.querySelector("[data-server-rendered]") ||
-        Array.from(document.querySelectorAll('*')).slice(0, 100).some(el => {
-            return Array.from(el.attributes).some(attr => attr.name.startsWith('data-v-'));
-        });
-
-    const hasVueScripts = Array.from(document.scripts).some(script => {
-        const src = script.src.toLowerCase();
-        return src.includes("vue") || src.includes("nuxt");
-    });
-
-    if (hasVueDOM || hasVueScripts) {
-        techs.push("Vue");
+    if (!reactDetected) {
+        const legacyReactRoot = document.querySelector('[data-reactroot]');
+        if (legacyReactRoot) {
+            reactDetected = true;
+        }
     }
 
-    //Angular
-    const hasAngularDOM =
-        document.querySelector("[ng-version]") ||
-        document.querySelector("app-root") ||
-        document.querySelector("[ng-app]") ||
-        document.querySelector("[ng-controller]") ||
-        document.querySelector(".ng-binding");
-
-    const hasAngularScripts = Array.from(document.scripts).some(script => {
-        const src = script.src.toLowerCase();
-        return src.includes("angular") || src.includes("ng-");
-    });
-
-    if (hasAngularDOM || hasAngularScripts) {
-        techs.push("Angular");
+    //Check script sources for React/Next bundles
+    if (!reactDetected) {
+        const pageScripts = document.getElementsByTagName('script');
+        for (let i = 0; i < pageScripts.length; i++) {
+            const scriptSrc = pageScripts[i].src || '';
+            if (scriptSrc.includes('react') || scriptSrc.includes('react-dom') || scriptSrc.includes('_next/static')) {
+                reactDetected = true;
+                break;
+            }
+        }
     }
 
-    //Next.js
-    const hasNext =
-        document.querySelector("#__next") ||
-        document.querySelector("script[id='__NEXT_DATA__']");
-    if (hasNext) {
-        techs.push("Next.js");
+    if (reactDetected) {
+        identifiedLibrariesList.push("React");
     }
 
-    //Tailwind
-    let hasTailwind = false;
+    //VUE.JS
+    let isVueSite = false;
+    if (document.querySelector('[data-v-app]') || document.querySelector('[data-server-rendered]')) {
+        isVueSite = true;
+    } else {
+        //search DOM elements for scoped data-v attributes (max 100 elements to keep it fast)
+        const sampleElements = document.getElementsByTagName('*');
+        const limit = Math.min(sampleElements.length, 100);
+        for (let i = 0; i < limit; i++) {
+            const attributes = sampleElements[i].attributes;
+            for (let j = 0; j < attributes.length; j++) {
+                if (attributes[j].name.startsWith('data-v-')) {
+                    isVueSite = true;
+                    break;
+                }
+            }
+            if (isVueSite) break;
+        }
+    }
 
+    if (!isVueSite) {
+        const pageScripts = document.getElementsByTagName('script');
+        for (let i = 0; i < pageScripts.length; i++) {
+            const src = pageScripts[i].src || '';
+            if (src.includes('vue') || src.includes('nuxt')) {
+                isVueSite = true;
+                break;
+            }
+        }
+    }
+
+    if (isVueSite) {
+        identifiedLibrariesList.push("Vue");
+    }
+
+    //ANGULAR
+    let isAngular = false;
+    if (document.querySelector('[ng-version]') || document.querySelector('app-root') || document.querySelector('[ng-app]')) {
+        isAngular = true;
+    } else {
+        const pageScripts = document.getElementsByTagName('script');
+        for (let i = 0; i < pageScripts.length; i++) {
+            const src = pageScripts[i].src || '';
+            if (src.includes('angular') || src.includes('ng-')) {
+                isAngular = true;
+                break;
+            }
+        }
+    }
+
+    if (isAngular) {
+        identifiedLibrariesList.push("Angular");
+    }
+
+    //NEXT.JS
+    const nextDataScript = document.getElementById('__NEXT_DATA__');
+    const nextContainer = document.getElementById('__next');
+    if (nextDataScript || nextContainer) {
+        identifiedLibrariesList.push("Next.js");
+    }
+
+    //TAILWIND CSS
+    let tailwindCSSDetected = false;
     try {
-        for (let i = 0; i < document.styleSheets.length; i++) {
-            const sheet = document.styleSheets[i];
+        const styleSheets = document.styleSheets;
+        for (let i = 0; i < styleSheets.length; i++) {
+            const sheet = styleSheets[i];
             try {
                 const rules = sheet.cssRules || sheet.rules;
                 if (!rules) continue;
 
-                const limit = Math.min(rules.length, 50);
-                for (let j = 0; j < limit; j++) {
-                    const ruleText = rules[j].cssText;
-                    if (ruleText.includes('--tw-') || ruleText.includes('tailwind')) {
-                        hasTailwind = true;
+                const inspectLimit = Math.min(rules.length, 60);
+                for (let j = 0; j < inspectLimit; j++) {
+                    const cssText = rules[j].cssText;
+                    if (cssText.includes('--tw-') || cssText.includes('tailwindcss')) {
+                        tailwindCSSDetected = true;
                         break;
                     }
                 }
             } catch (sheetError) {
             }
-            if (hasTailwind) break;
+            if (tailwindCSSDetected) break;
         }
-    } catch (e) {
+    } catch (err) {
     }
 
-    if (!hasTailwind) {
-        const inlineStyles = Array.from(document.querySelectorAll('style'));
-        hasTailwind = inlineStyles.some(style => {
-            const text = style.textContent || '';
-            return text.includes('--tw-') || text.includes('tailwindcss');
-        });
+    //Check if there's any style tags containing tailwind text
+    if (!tailwindCSSDetected) {
+        const inlineStyles = document.getElementsByTagName('style');
+        for (let i = 0; i < inlineStyles.length; i++) {
+            const text = inlineStyles[i].textContent || '';
+            if (text.includes('--tw-') || text.includes('tailwindcss')) {
+                tailwindCSSDetected = true;
+                break;
+            }
+        }
     }
 
-    if (!hasTailwind && document.body) {
+    //Look at the class name of document body
+    if (!tailwindCSSDetected && document.body) {
         const bodyClass = document.body.className || '';
-        const htmlClass = document.documentElement.className || '';
-        const hasTailwindClasses = (c: string) =>
-            c.includes('bg-') && (c.includes('text-') || c.includes('flex') || c.includes('grid') || c.includes('mx-') || c.includes('p-'));
-
-        hasTailwind = hasTailwindClasses(bodyClass) || hasTailwindClasses(htmlClass);
+        const isTailwindPattern = (str: string) => {
+            return str.includes('bg-') && (str.includes('text-') || str.includes('flex') || str.includes('grid'));
+        };
+        if (isTailwindPattern(bodyClass)) {
+            tailwindCSSDetected = true;
+        }
     }
 
-    if (hasTailwind) {
-        techs.push("Tailwind");
+    if (tailwindCSSDetected) {
+        identifiedLibrariesList.push("Tailwind");
     }
 
-    //WordPress
-    const hasWP =
-        document.querySelector("meta[name='generator'][content*='WordPress']") ||
-        document.querySelector("link[rel='https://api.w.org/']") ||
-        Array.from(document.querySelectorAll('link, script')).slice(0, 100).some(el => {
-            const src = (el as any).src || (el as any).href || '';
-            return src.includes('wp-content') || src.includes('wp-includes');
-        });
-
-    if (hasWP) {
-        techs.push("WordPress");
+    //WORDPRESS
+    let wordpressSite = false;
+    const generatorMeta = document.querySelector("meta[name='generator']");
+    if (generatorMeta) {
+        const contentVal = generatorMeta.getAttribute('content') || '';
+        if (contentVal.includes('WordPress')) {
+            wordpressSite = true;
+        }
     }
 
-    return Array.from(new Set(techs));
+    if (!wordpressSite) {
+        const assets = document.querySelectorAll('link, script');
+        const limit = Math.min(assets.length, 120);
+        for (let i = 0; i < limit; i++) {
+            const el = assets[i] as any;
+            const sourceUrl = el.src || el.href || '';
+            if (sourceUrl.includes('wp-content') || sourceUrl.includes('wp-includes')) {
+                wordpressSite = true;
+                break;
+            }
+        }
+    }
+
+    if (wordpressSite) {
+        identifiedLibrariesList.push("WordPress");
+    }
+
+    return identifiedLibrariesList;
 }
