@@ -1,180 +1,58 @@
 export function scanForFrontendStack(): string[] {
-    const identifiedLibrariesList: string[] = [];
+    const list: string[] = [];
 
-    //REACT
-    const reactMountIds = ['root', 'react-root', 'react-app'];
-    let reactDetected = false;
-
-    //Check if any standard React container is present in the DOM
-    for (const id of reactMountIds) {
-        if (document.getElementById(id)) {
-            reactDetected = true;
-            break;
-        }
+    //React detection
+    if (document.querySelector('#root, #react-root, #react-app, [data-reactroot], script[src*="react"], script[src*="react-dom"], script[src*="_next/static"]')) {
+        list.push("React");
     }
 
-    if (!reactDetected) {
-        const legacyReactRoot = document.querySelector('[data-reactroot]');
-        if (legacyReactRoot) {
-            reactDetected = true;
-        }
+    //Vue detection
+    const isVue = !!document.querySelector('[data-v-app], [data-server-rendered], script[src*="vue"], script[src*="nuxt"]') ||
+        Array.from(document.querySelectorAll('*')).slice(0, 100).some(el =>
+            Array.from(el.attributes).some(attr => attr.name.startsWith('data-v-'))
+        );
+    if (isVue) {
+        list.push("Vue");
     }
 
-    //Check script sources for React/Next bundles
-    if (!reactDetected) {
-        const pageScripts = document.getElementsByTagName('script');
-        for (let i = 0; i < pageScripts.length; i++) {
-            const scriptSrc = pageScripts[i].src || '';
-            if (scriptSrc.includes('react') || scriptSrc.includes('react-dom') || scriptSrc.includes('_next/static')) {
-                reactDetected = true;
-                break;
-            }
-        }
+    //Angular detection
+    if (document.querySelector('[ng-version], app-root, [ng-app], script[src*="angular"], script[src*="ng-"]')) {
+        list.push("Angular");
     }
 
-    if (reactDetected) {
-        identifiedLibrariesList.push("React");
+    //Next.js detection
+    if (document.querySelector('#__NEXT_DATA__, #__next')) {
+        list.push("Next.js");
     }
 
-    //VUE.JS
-    let isVueSite = false;
-    if (document.querySelector('[data-v-app]') || document.querySelector('[data-server-rendered]')) {
-        isVueSite = true;
-    } else {
-        //search DOM elements for scoped data-v attributes (max 100 elements to keep it fast)
-        const sampleElements = document.getElementsByTagName('*');
-        const limit = Math.min(sampleElements.length, 100);
-        for (let i = 0; i < limit; i++) {
-            const attributes = sampleElements[i].attributes;
-            for (let j = 0; j < attributes.length; j++) {
-                if (attributes[j].name.startsWith('data-v-')) {
-                    isVueSite = true;
-                    break;
+    //Tailwind detection
+    let isTailwind = Array.from(document.querySelectorAll('style')).some(s => s.textContent?.includes('--tw-') || s.textContent?.includes('tailwindcss'));
+    if (!isTailwind) {
+        try {
+            isTailwind = Array.from(document.styleSheets).some(sheet => {
+                try {
+                    const rules = sheet.cssRules || sheet.rules;
+                    return rules && Array.from(rules).slice(0, 30).some(r => r.cssText.includes('--tw-') || r.cssText.includes('tailwind'));
+                } catch {
+                    return false; // CORS block
                 }
-            }
-            if (isVueSite) break;
-        }
+            });
+        } catch { }
     }
-
-    if (!isVueSite) {
-        const pageScripts = document.getElementsByTagName('script');
-        for (let i = 0; i < pageScripts.length; i++) {
-            const src = pageScripts[i].src || '';
-            if (src.includes('vue') || src.includes('nuxt')) {
-                isVueSite = true;
-                break;
-            }
-        }
-    }
-
-    if (isVueSite) {
-        identifiedLibrariesList.push("Vue");
-    }
-
-    //ANGULAR
-    let isAngular = false;
-    if (document.querySelector('[ng-version]') || document.querySelector('app-root') || document.querySelector('[ng-app]')) {
-        isAngular = true;
-    } else {
-        const pageScripts = document.getElementsByTagName('script');
-        for (let i = 0; i < pageScripts.length; i++) {
-            const src = pageScripts[i].src || '';
-            if (src.includes('angular') || src.includes('ng-')) {
-                isAngular = true;
-                break;
-            }
-        }
-    }
-
-    if (isAngular) {
-        identifiedLibrariesList.push("Angular");
-    }
-
-    //NEXT.JS
-    const nextDataScript = document.getElementById('__NEXT_DATA__');
-    const nextContainer = document.getElementById('__next');
-    if (nextDataScript || nextContainer) {
-        identifiedLibrariesList.push("Next.js");
-    }
-
-    //TAILWIND CSS
-    let tailwindCSSDetected = false;
-    try {
-        const styleSheets = document.styleSheets;
-        for (let i = 0; i < styleSheets.length; i++) {
-            const sheet = styleSheets[i];
-            try {
-                const rules = sheet.cssRules || sheet.rules;
-                if (!rules) continue;
-
-                const inspectLimit = Math.min(rules.length, 60);
-                for (let j = 0; j < inspectLimit; j++) {
-                    const cssText = rules[j].cssText;
-                    if (cssText.includes('--tw-') || cssText.includes('tailwindcss')) {
-                        tailwindCSSDetected = true;
-                        break;
-                    }
-                }
-            } catch (sheetError) {
-            }
-            if (tailwindCSSDetected) break;
-        }
-    } catch (err) {
-    }
-
-    //Check if there's any style tags containing tailwind text
-    if (!tailwindCSSDetected) {
-        const inlineStyles = document.getElementsByTagName('style');
-        for (let i = 0; i < inlineStyles.length; i++) {
-            const text = inlineStyles[i].textContent || '';
-            if (text.includes('--tw-') || text.includes('tailwindcss')) {
-                tailwindCSSDetected = true;
-                break;
-            }
-        }
-    }
-
-    //Look at the class name of document body
-    if (!tailwindCSSDetected && document.body) {
+    if (!isTailwind && document.body) {
         const bodyClass = document.body.className || '';
-        const isTailwindPattern = (str: string) => {
-            return str.includes('bg-') && (str.includes('text-') || str.includes('flex') || str.includes('grid'));
-        };
-        if (isTailwindPattern(bodyClass)) {
-            tailwindCSSDetected = true;
-        }
+        const htmlClass = document.documentElement.className || '';
+        const checkClass = (c: string) => c.includes('bg-') && (c.includes('text-') || c.includes('flex') || c.includes('grid'));
+        isTailwind = checkClass(bodyClass) || checkClass(htmlClass);
+    }
+    if (isTailwind) {
+        list.push("Tailwind");
     }
 
-    if (tailwindCSSDetected) {
-        identifiedLibrariesList.push("Tailwind");
+    //WordPress detection
+    if (document.querySelector("meta[name='generator'][content*='WordPress'], link[href*='wp-content'], link[href*='wp-includes'], script[src*='wp-content'], script[src*='wp-includes']")) {
+        list.push("WordPress");
     }
 
-    //WORDPRESS
-    let wordpressSite = false;
-    const generatorMeta = document.querySelector("meta[name='generator']");
-    if (generatorMeta) {
-        const contentVal = generatorMeta.getAttribute('content') || '';
-        if (contentVal.includes('WordPress')) {
-            wordpressSite = true;
-        }
-    }
-
-    if (!wordpressSite) {
-        const assets = document.querySelectorAll('link, script');
-        const limit = Math.min(assets.length, 120);
-        for (let i = 0; i < limit; i++) {
-            const el = assets[i] as any;
-            const sourceUrl = el.src || el.href || '';
-            if (sourceUrl.includes('wp-content') || sourceUrl.includes('wp-includes')) {
-                wordpressSite = true;
-                break;
-            }
-        }
-    }
-
-    if (wordpressSite) {
-        identifiedLibrariesList.push("WordPress");
-    }
-
-    return identifiedLibrariesList;
+    return list;
 }

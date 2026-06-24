@@ -1,4 +1,3 @@
-console.log("Sentinel content script loaded");
 import { scanForFrontendStack } from "../analyze/techs";
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
