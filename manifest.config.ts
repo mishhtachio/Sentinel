@@ -10,7 +10,11 @@ export default defineManifest({
         default_popup: "index.html",
     },
 
-    permissions: ["tabs"],
+    background: {
+        service_worker: "src/background/background.ts",
+    },
+
+    permissions: ["tabs", "webRequest"],
 
     host_permissions: ["<all_urls>"],
 

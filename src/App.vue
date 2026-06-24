@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
 import type { PageInfo } from "./types/pageInfo";
+import { analyzeHeaders } from "./background/background";
+import type { SecurityHeaders } from "./analyze/headers";
 
 const pageInfo = ref<PageInfo>({
   title: "Not detected",
@@ -11,7 +13,9 @@ const pageInfo = ref<PageInfo>({
   technologies: []
 });
 
+const headersInfo = ref<SecurityHeaders | null>(null);
 const errorMsg = ref("");
+
 
 onMounted(async () => {
   try {
@@ -35,11 +39,22 @@ onMounted(async () => {
       return;
     }
 
+    // 1. Fetch DOM statistics from content script
     const response = await chrome.tabs.sendMessage(tab.id, { type: "GET_PAGE_INFO" });
     if (response) {
       pageInfo.value = response;
     } else {
       errorMsg.value = "Unable to read page statistics.";
+    }
+
+    // 2. Fetch network headers from background MAP
+    const responseHeaders = await chrome.runtime.sendMessage({ 
+      type: "GET_HEADERS", 
+      tabId: tab.id 
+    });
+    
+    if (responseHeaders && responseHeaders.length > 0) {
+      headersInfo.value = analyzeHeaders(responseHeaders);
     }
   } catch (err: any) {
     console.error("Error fetching page info:", err);
@@ -89,6 +104,75 @@ onMounted(async () => {
               {{ pageInfo.url }}
             </p>
           </div>
+        </div>
+      </div>
+
+      <!-- Security Headers Panel -->
+      <div class="panel">
+        <div class="flex items-center justify-between mb-1">
+          <h3 class="panel-title">Security Headers</h3>
+        </div>
+
+        <div v-if="headersInfo" class="flex flex-col gap-2.5 mt-2">
+          <!-- CSP -->
+          <div class="flex items-center justify-between text-xs py-0.5">
+            <span class="font-medium text-slate-300">Content-Security-Policy</span>
+            <span class="px-2 py-0.5 rounded text-[10px] font-semibold tracking-wide" :class="headersInfo.csp ? 'bg-emerald-950/60 text-emerald-400 border border-emerald-800/40' : 'bg-rose-950/60 text-rose-400 border border-rose-800/40'">
+              {{ headersInfo.csp ? 'Secure' : 'Missing' }}
+            </span>
+          </div>
+
+          <!-- HSTS -->
+          <div class="flex items-center justify-between text-xs py-0.5">
+            <span class="font-medium text-slate-300">Strict-Transport-Security</span>
+            <span class="px-2 py-0.5 rounded text-[10px] font-semibold tracking-wide" :class="headersInfo.hsts ? 'bg-emerald-950/60 text-emerald-400 border border-emerald-800/40' : 'bg-rose-950/60 text-rose-400 border border-rose-800/40'">
+              {{ headersInfo.hsts ? 'Secure' : 'Missing' }}
+            </span>
+          </div>
+
+          <!-- X-Frame-Options -->
+          <div class="flex items-center justify-between text-xs py-0.5">
+            <span class="font-medium text-slate-300">X-Frame-Options</span>
+            <span class="px-2 py-0.5 rounded text-[10px] font-semibold tracking-wide" :class="headersInfo.xFrameOptions ? 'bg-emerald-950/60 text-emerald-400 border border-emerald-800/40' : 'bg-rose-950/60 text-rose-400 border border-rose-800/40'">
+              {{ headersInfo.xFrameOptions ? 'Secure' : 'Missing' }}
+            </span>
+          </div>
+
+          <!-- X-Content-Type-Options -->
+          <div class="flex items-center justify-between text-xs py-0.5">
+            <span class="font-medium text-slate-300">X-Content-Type-Options</span>
+            <span class="px-2 py-0.5 rounded text-[10px] font-semibold tracking-wide" :class="headersInfo.xContentTypeOptions ? 'bg-emerald-950/60 text-emerald-400 border border-emerald-800/40' : 'bg-rose-950/60 text-rose-400 border border-rose-800/40'">
+              {{ headersInfo.xContentTypeOptions ? 'Secure' : 'Missing' }}
+            </span>
+          </div>
+
+          <!-- Referrer-Policy -->
+          <div class="flex items-center justify-between text-xs py-0.5">
+            <span class="font-medium text-slate-300">Referrer-Policy</span>
+            <span class="px-2 py-0.5 rounded text-[10px] font-semibold tracking-wide" :class="headersInfo.referrerPolicy ? 'bg-emerald-950/60 text-emerald-400 border border-emerald-800/40' : 'bg-rose-950/60 text-rose-400 border border-rose-800/40'">
+              {{ headersInfo.referrerPolicy ? 'Secure' : 'Missing' }}
+            </span>
+          </div>
+
+          <!-- Permissions-Policy -->
+          <div class="flex items-center justify-between text-xs py-0.5">
+            <span class="font-medium text-slate-300">Permissions-Policy</span>
+            <span class="px-2 py-0.5 rounded text-[10px] font-semibold tracking-wide" :class="headersInfo.permissionPolicy ? 'bg-emerald-950/60 text-emerald-400 border border-emerald-800/40' : 'bg-rose-950/60 text-rose-400 border border-rose-800/40'">
+              {{ headersInfo.permissionPolicy ? 'Secure' : 'Missing' }}
+            </span>
+          </div>
+
+          <!-- X-Powered-By -->
+          <div class="flex items-center justify-between text-xs py-0.5">
+            <span class="font-medium text-slate-300">X-Powered-By (Info Leak)</span>
+            <span class="px-2 py-0.5 rounded text-[10px] font-semibold tracking-wide" :class="!headersInfo.xPoweredBy ? 'bg-emerald-950/60 text-emerald-400 border border-emerald-800/40' : 'bg-rose-950/60 text-rose-400 border border-rose-800/40'">
+              {{ !headersInfo.xPoweredBy ? 'Secure' : 'Leaking' }}
+            </span>
+          </div>
+        </div>
+
+        <div v-else class="text-xs text-slate-500 italic py-2 mt-1">
+          No headers captured for this tab yet. Reload the page to capture network packets.
         </div>
       </div>
 
