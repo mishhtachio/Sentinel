@@ -21,6 +21,71 @@ function toggleHeader(key: string) {
   expandedHeader.value = expandedHeader.value === key ? null : key;
 }
 
+interface CookieIssue {
+  title: string;
+  description: string;
+  type: 'error' | 'warning';
+}
+
+interface ProcessedCookie {
+  name: string;
+  domain: string;
+  httpOnly: boolean;
+  secure: boolean;
+  sameSite: 'no_restriction' | 'lax' | 'strict' | 'unspecified';
+  issues: CookieIssue[];
+}
+
+const cookiesList = ref<ProcessedCookie[]>([]);
+const expandedCookie = ref<string | null>(null);
+
+function toggleCookie(cookieKey: string) {
+  expandedCookie.value = expandedCookie.value === cookieKey ? null : cookieKey;
+}
+
+function auditCookie(cookie: chrome.cookies.Cookie): ProcessedCookie {
+  const issues: CookieIssue[] = [];
+  
+  if (!cookie.httpOnly) {
+    issues.push({
+      title: "Missing HttpOnly flag",
+      description: "This badge lacks a lock. JavaScript can access it, which means if someone runs a script on your page (XSS attack), they can copy this cookie and steal your user's login session.",
+      type: "error"
+    });
+  }
+  
+  if (!cookie.secure) {
+    issues.push({
+      title: "Missing Secure flag",
+      description: "This badge is being sent over plain HTTP. Anyone watching your internet traffic (like on public Wi-Fi) can see it.",
+      type: "error"
+    });
+  }
+  
+  if (cookie.sameSite === 'no_restriction') {
+    issues.push({
+      title: "SameSite is None",
+      description: "This badge is shared with other websites. Other sites can abuse this to make requests on behalf of your user (CSRF attack).",
+      type: "warning"
+    });
+  } else if (cookie.sameSite === 'unspecified') {
+    issues.push({
+      title: "SameSite is Unspecified",
+      description: "The cookie doesn't declare SameSite. Browsers default to Lax, but declaring Lax or Strict explicitly makes your security behavior predictable.",
+      type: "warning"
+    });
+  }
+  
+  return {
+    name: cookie.name,
+    domain: cookie.domain,
+    httpOnly: cookie.httpOnly,
+    secure: cookie.secure,
+    sameSite: cookie.sameSite,
+    issues
+  };
+}
+
 const headerDetails: { key: keyof SecurityHeaders; label: string; invertStatus?: boolean; explain: string }[] = [
   {
     key: 'csp',
@@ -96,6 +161,15 @@ onMounted(async () => {
     
     if (responseHeaders && responseHeaders.length > 0) {
       headersInfo.value = analyzeHeaders(responseHeaders);
+    }
+
+    try {
+      if (typeof chrome !== 'undefined' && chrome.cookies && tab.url) {
+        const cookies = await chrome.cookies.getAll({ url: tab.url });
+        cookiesList.value = cookies.map(auditCookie);
+      }
+    } catch (cookieErr) {
+      console.error("Error querying cookies:", cookieErr);
     }
   } catch (err: any) {
     console.error("Error fetching page info:", err);
@@ -177,6 +251,87 @@ onMounted(async () => {
 
         <div v-else class="text-xs text-slate-500 italic py-2 mt-1">
           No headers captured for this tab yet. Reload the page to capture network packets.
+        </div>
+      </div>
+
+      <!-- Cookie Security Audit Panel -->
+      <div class="panel">
+        <div class="flex items-center justify-between">
+          <h3 class="panel-title mb-0">Cookie Security Audit</h3>
+          <span v-if="cookiesList.length > 0" class="text-[9px] bg-slate-950/80 border border-slate-800/80 text-cyan-400 px-2 py-0.5 rounded font-mono font-semibold">
+            {{ cookiesList.length }} Cookies
+          </span>
+        </div>
+
+        <div v-if="cookiesList.length > 0" class="flex flex-col gap-1.5 mt-1 max-h-[180px] overflow-y-auto pr-1">
+          <div v-for="(cookie, index) in cookiesList" :key="cookie.domain + ':' + cookie.name + ':' + index" 
+               class="rounded-lg border border-slate-800/40 overflow-hidden transition-all duration-200 shrink-0"
+               :class="[
+                 expandedCookie === (cookie.domain + ':' + cookie.name + ':' + index) ? 'bg-slate-950/60' : 'hover:bg-slate-950/30',
+                 cookie.issues.length > 0 ? 'border-amber-950/30' : ''
+               ]">
+            <!-- Header click target -->
+            <div class="flex flex-col py-2 px-2.5 cursor-pointer select-none"
+                 @click="toggleCookie(cookie.domain + ':' + cookie.name + ':' + index)">
+              <div class="flex items-center justify-between gap-2">
+                <div class="flex items-center gap-1.5 min-w-0">
+                  <span class="text-[9px] text-slate-500 transition-transform duration-200" :class="expandedCookie === (cookie.domain + ':' + cookie.name + ':' + index) ? 'rotate-90' : ''">▶</span>
+                  <span class="font-mono text-[10px] font-semibold text-slate-300 truncate" :title="cookie.name">{{ cookie.name }}</span>
+                </div>
+                <!-- Warning Dot Indicator -->
+                <span v-if="cookie.issues.length > 0" 
+                      class="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" 
+                      title="Has security recommendations"></span>
+              </div>
+              
+              <!-- Cookie Flags Badges -->
+              <div class="flex flex-wrap gap-1 mt-1.5 pl-3">
+                <span class="px-1.5 py-0.5 rounded text-[8px] font-bold tracking-wide"
+                      :class="cookie.httpOnly ? 'bg-emerald-950/60 text-emerald-400 border border-emerald-800/30' : 'bg-rose-950/60 text-rose-400 border border-rose-800/30'">
+                  {{ cookie.httpOnly ? 'HttpOnly' : 'No HttpOnly' }}
+                </span>
+                <span class="px-1.5 py-0.5 rounded text-[8px] font-bold tracking-wide"
+                      :class="cookie.secure ? 'bg-emerald-950/60 text-emerald-400 border border-emerald-800/30' : 'bg-rose-950/60 text-rose-400 border border-rose-800/30'">
+                  {{ cookie.secure ? 'Secure' : 'Insecure' }}
+                </span>
+                <span class="px-1.5 py-0.5 rounded text-[8px] font-bold tracking-wide"
+                      :class="cookie.sameSite === 'strict' || cookie.sameSite === 'lax' ? 'bg-emerald-950/60 text-emerald-400 border border-emerald-800/30' : 'bg-amber-950/60 text-amber-400 border border-amber-800/30'">
+                  SameSite: {{ cookie.sameSite === 'no_restriction' ? 'None' : (cookie.sameSite === 'unspecified' ? 'Unset' : cookie.sameSite) }}
+                </span>
+              </div>
+            </div>
+
+            <!-- Expandable Explanations -->
+            <div v-if="expandedCookie === (cookie.domain + ':' + cookie.name + ':' + index)" class="px-2.5 pb-2.5 pt-1.5 border-t border-slate-900/60 bg-slate-950/40">
+              <div class="text-[9px] text-slate-500 mb-2 font-mono truncate" :title="cookie.domain">
+                Domain: {{ cookie.domain }}
+              </div>
+              
+              <!-- List of issues for this cookie -->
+              <div v-if="cookie.issues.length > 0" class="flex flex-col gap-1.5">
+                <div v-for="issue in cookie.issues" :key="issue.title" 
+                     class="flex gap-1.5 items-start p-2 rounded border"
+                     :class="issue.type === 'error' ? 'border-rose-900/30 bg-rose-950/20' : 'border-amber-900/30 bg-amber-950/20'">
+                  <span class="text-[10px] font-bold shrink-0 leading-none mt-0.5" 
+                        :class="issue.type === 'error' ? 'text-rose-400' : 'text-amber-400'">⚠</span>
+                  <div class="flex-grow">
+                    <h4 class="text-[9px] font-bold uppercase tracking-wider" 
+                        :class="issue.type === 'error' ? 'text-rose-300' : 'text-amber-300'">{{ issue.title }}</h4>
+                    <p class="text-[10px] text-slate-400 mt-0.5 leading-relaxed">{{ issue.description }}</p>
+                  </div>
+                </div>
+              </div>
+              <!-- All flags are correct -->
+              <div v-else class="flex items-center gap-1.5 p-2 rounded border border-emerald-900/30 bg-emerald-950/20 text-emerald-400">
+                <span class="text-[10px] font-bold">✔</span>
+                <span class="text-[10px] font-medium leading-tight">All security flags active! This cookie is well protected.</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div v-else class="text-xs text-slate-500 italic py-2 mt-1">
+          No cookies found for this site.
         </div>
       </div>
 

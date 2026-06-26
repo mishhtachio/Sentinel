@@ -14,7 +14,7 @@ export default defineManifest({
         service_worker: "src/background/background.ts",
     },
 
-    permissions: ["tabs", "webRequest"],
+    permissions: ["tabs", "webRequest", "cookies"],
 
     host_permissions: ["<all_urls>"],
 
