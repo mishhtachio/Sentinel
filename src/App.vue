@@ -15,7 +15,50 @@ const pageInfo = ref<PageInfo>({
 
 const headersInfo = ref<SecurityHeaders | null>(null);
 const errorMsg = ref("");
+const expandedHeader = ref<string | null>(null);
 
+function toggleHeader(key: string) {
+  expandedHeader.value = expandedHeader.value === key ? null : key;
+}
+
+const headerDetails: { key: keyof SecurityHeaders; label: string; invertStatus?: boolean; explain: string }[] = [
+  {
+    key: 'csp',
+    label: 'Content-Security-Policy',
+    explain: 'Controls which scripts, styles, and resources can load on your page. Without it, attackers can inject malicious code (XSS attacks) into your site.'
+  },
+  {
+    key: 'hsts',
+    label: 'Strict-Transport-Security',
+    explain: 'Forces browsers to always use HTTPS when visiting your site. Without it, users could be tricked into connecting over insecure HTTP, exposing their data.'
+  },
+  {
+    key: 'xFrameOptions',
+    label: 'X-Frame-Options',
+    explain: 'Prevents your site from being embedded in iframes on other websites. Without it, attackers can overlay invisible frames to trick users into clicking things they didn\'t intend to (clickjacking).'
+  },
+  {
+    key: 'xContentTypeOptions',
+    label: 'X-Content-Type-Options',
+    explain: 'Stops browsers from guessing the file type of your resources. Without it, a browser might execute a text file as JavaScript if an attacker names it cleverly.'
+  },
+  {
+    key: 'referrerPolicy',
+    label: 'Referrer-Policy',
+    explain: 'Controls how much URL information is shared when users click links on your site. Without it, sensitive paths and query parameters could leak to third-party sites.'
+  },
+  {
+    key: 'permissionPolicy',
+    label: 'Permissions-Policy',
+    explain: 'Restricts which browser features (camera, microphone, geolocation) your site and embedded content can access. Without it, third-party scripts could silently use these features.'
+  },
+  {
+    key: 'xPoweredBy',
+    label: 'X-Powered-By',
+    invertStatus: true,
+    explain: 'This header exposes what server technology you\'re running (Express, PHP, etc). Attackers use this to find known vulnerabilities for your exact stack. It should be removed.'
+  }
+];
 
 onMounted(async () => {
   try {
@@ -39,7 +82,6 @@ onMounted(async () => {
       return;
     }
 
-    // 1. Fetch DOM statistics from content script
     const response = await chrome.tabs.sendMessage(tab.id, { type: "GET_PAGE_INFO" });
     if (response) {
       pageInfo.value = response;
@@ -47,7 +89,6 @@ onMounted(async () => {
       errorMsg.value = "Unable to read page statistics.";
     }
 
-    // 2. Fetch network headers from background MAP
     const responseHeaders = await chrome.runtime.sendMessage({ 
       type: "GET_HEADERS", 
       tabId: tab.id 
@@ -109,65 +150,28 @@ onMounted(async () => {
 
       <!-- Security Headers Panel -->
       <div class="panel">
-        <div class="flex items-center justify-between mb-1">
-          <h3 class="panel-title">Security Headers</h3>
-        </div>
+        <h3 class="panel-title">Security Headers</h3>
 
-        <div v-if="headersInfo" class="flex flex-col gap-2.5 mt-2">
-          <!-- CSP -->
-          <div class="flex items-center justify-between text-xs py-0.5">
-            <span class="font-medium text-slate-300">Content-Security-Policy</span>
-            <span class="px-2 py-0.5 rounded text-[10px] font-semibold tracking-wide" :class="headersInfo.csp ? 'bg-emerald-950/60 text-emerald-400 border border-emerald-800/40' : 'bg-rose-950/60 text-rose-400 border border-rose-800/40'">
-              {{ headersInfo.csp ? 'Secure' : 'Missing' }}
-            </span>
-          </div>
-
-          <!-- HSTS -->
-          <div class="flex items-center justify-between text-xs py-0.5">
-            <span class="font-medium text-slate-300">Strict-Transport-Security</span>
-            <span class="px-2 py-0.5 rounded text-[10px] font-semibold tracking-wide" :class="headersInfo.hsts ? 'bg-emerald-950/60 text-emerald-400 border border-emerald-800/40' : 'bg-rose-950/60 text-rose-400 border border-rose-800/40'">
-              {{ headersInfo.hsts ? 'Secure' : 'Missing' }}
-            </span>
-          </div>
-
-          <!-- X-Frame-Options -->
-          <div class="flex items-center justify-between text-xs py-0.5">
-            <span class="font-medium text-slate-300">X-Frame-Options</span>
-            <span class="px-2 py-0.5 rounded text-[10px] font-semibold tracking-wide" :class="headersInfo.xFrameOptions ? 'bg-emerald-950/60 text-emerald-400 border border-emerald-800/40' : 'bg-rose-950/60 text-rose-400 border border-rose-800/40'">
-              {{ headersInfo.xFrameOptions ? 'Secure' : 'Missing' }}
-            </span>
-          </div>
-
-          <!-- X-Content-Type-Options -->
-          <div class="flex items-center justify-between text-xs py-0.5">
-            <span class="font-medium text-slate-300">X-Content-Type-Options</span>
-            <span class="px-2 py-0.5 rounded text-[10px] font-semibold tracking-wide" :class="headersInfo.xContentTypeOptions ? 'bg-emerald-950/60 text-emerald-400 border border-emerald-800/40' : 'bg-rose-950/60 text-rose-400 border border-rose-800/40'">
-              {{ headersInfo.xContentTypeOptions ? 'Secure' : 'Missing' }}
-            </span>
-          </div>
-
-          <!-- Referrer-Policy -->
-          <div class="flex items-center justify-between text-xs py-0.5">
-            <span class="font-medium text-slate-300">Referrer-Policy</span>
-            <span class="px-2 py-0.5 rounded text-[10px] font-semibold tracking-wide" :class="headersInfo.referrerPolicy ? 'bg-emerald-950/60 text-emerald-400 border border-emerald-800/40' : 'bg-rose-950/60 text-rose-400 border border-rose-800/40'">
-              {{ headersInfo.referrerPolicy ? 'Secure' : 'Missing' }}
-            </span>
-          </div>
-
-          <!-- Permissions-Policy -->
-          <div class="flex items-center justify-between text-xs py-0.5">
-            <span class="font-medium text-slate-300">Permissions-Policy</span>
-            <span class="px-2 py-0.5 rounded text-[10px] font-semibold tracking-wide" :class="headersInfo.permissionPolicy ? 'bg-emerald-950/60 text-emerald-400 border border-emerald-800/40' : 'bg-rose-950/60 text-rose-400 border border-rose-800/40'">
-              {{ headersInfo.permissionPolicy ? 'Secure' : 'Missing' }}
-            </span>
-          </div>
-
-          <!-- X-Powered-By -->
-          <div class="flex items-center justify-between text-xs py-0.5">
-            <span class="font-medium text-slate-300">X-Powered-By (Info Leak)</span>
-            <span class="px-2 py-0.5 rounded text-[10px] font-semibold tracking-wide" :class="!headersInfo.xPoweredBy ? 'bg-emerald-950/60 text-emerald-400 border border-emerald-800/40' : 'bg-rose-950/60 text-rose-400 border border-rose-800/40'">
-              {{ !headersInfo.xPoweredBy ? 'Secure' : 'Leaking' }}
-            </span>
+        <div v-if="headersInfo" class="flex flex-col gap-1 mt-2">
+          <div v-for="h in headerDetails" :key="h.key" 
+               class="rounded-lg border border-slate-800/40 overflow-hidden transition-all duration-200"
+               :class="expandedHeader === h.key ? 'bg-slate-950/60' : 'hover:bg-slate-950/30'">
+            <div class="flex items-center justify-between text-xs py-2 px-2.5 cursor-pointer select-none"
+                 @click="toggleHeader(h.key)">
+              <div class="flex items-center gap-1.5">
+                <span class="text-[10px] transition-transform duration-200" :class="expandedHeader === h.key ? 'rotate-90' : ''">▶</span>
+                <span class="font-medium text-slate-300">{{ h.label }}</span>
+              </div>
+              <span class="px-2 py-0.5 rounded text-[10px] font-semibold tracking-wide"
+                    :class="(h.invertStatus ? !headersInfo[h.key] : headersInfo[h.key]) 
+                      ? 'bg-emerald-950/60 text-emerald-400 border border-emerald-800/40' 
+                      : 'bg-rose-950/60 text-rose-400 border border-rose-800/40'">
+                {{ (h.invertStatus ? !headersInfo[h.key] : headersInfo[h.key]) ? 'Secure' : (h.invertStatus ? 'Leaking' : 'Missing') }}
+              </span>
+            </div>
+            <div v-if="expandedHeader === h.key" class="px-2.5 pb-2.5 pt-0.5">
+              <p class="text-[11px] text-slate-400 leading-relaxed">{{ h.explain }}</p>
+            </div>
           </div>
         </div>
 
