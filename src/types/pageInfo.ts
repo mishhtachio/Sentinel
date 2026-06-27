@@ -1,3 +1,5 @@
+import type { SecretFinding } from "../analyze/secrets";
+
 export interface PageInfo {
     title: string;
     url: string;
@@ -5,4 +7,5 @@ export interface PageInfo {
     links: number;
     images: number;
     technologies: string[];
+    findings?: SecretFinding[];
 }

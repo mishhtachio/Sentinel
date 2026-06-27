@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, computed } from 'vue';
 import type { PageInfo } from "./types/pageInfo";
 import { analyzeHeaders } from "./background/background";
 import type { SecurityHeaders } from "./analyze/headers";
@@ -10,16 +10,34 @@ const pageInfo = ref<PageInfo>({
   scripts: 0,
   links: 0,
   images: 0,
-  technologies: []
+  technologies: [],
+  findings: []
 });
 
 const headersInfo = ref<SecurityHeaders | null>(null);
 const errorMsg = ref("");
 const expandedHeader = ref<string | null>(null);
+const expandedLeak = ref<number | null>(null);
 
 function toggleHeader(key: string) {
   expandedHeader.value = expandedHeader.value === key ? null : key;
 }
+
+function toggleLeak(index: number) {
+  expandedLeak.value = expandedLeak.value === index ? null : index;
+}
+
+const criticalCount = computed(() => {
+  return pageInfo.value.findings?.filter(f => f.severity === 'critical').length || 0;
+});
+
+const warningCount = computed(() => {
+  return pageInfo.value.findings?.filter(f => f.severity === 'warning').length || 0;
+});
+
+const infoCount = computed(() => {
+  return pageInfo.value.findings?.filter(f => f.severity === 'info').length || 0;
+});
 
 interface CookieIssue {
   title: string;
@@ -332,6 +350,78 @@ onMounted(async () => {
 
         <div v-else class="text-xs text-slate-500 italic py-2 mt-1">
           No cookies found for this site.
+        </div>
+      </div>
+
+      <!-- Source Leak Scanner Panel -->
+      <div class="panel">
+        <div class="flex items-center justify-between">
+          <h3 class="panel-title mb-0">Source Leak Scanner</h3>
+          
+          <div class="flex gap-1">
+            <span v-if="criticalCount > 0" class="text-[8px] bg-rose-950/60 text-rose-400 border border-rose-800/40 px-1.5 py-0.5 rounded font-mono font-bold tracking-wide">
+              {{ criticalCount }} Critical
+            </span>
+            <span v-if="warningCount > 0" class="text-[8px] bg-amber-950/60 text-amber-400 border border-amber-800/40 px-1.5 py-0.5 rounded font-mono font-bold tracking-wide">
+              {{ warningCount }} Warn
+            </span>
+            <span v-if="infoCount > 0" class="text-[8px] bg-slate-900 text-slate-400 border border-slate-800 px-1.5 py-0.5 rounded font-mono font-bold tracking-wide">
+              {{ infoCount }} Info
+            </span>
+            <span v-if="!pageInfo.findings || pageInfo.findings.length === 0" class="text-[8px] bg-emerald-950/60 text-emerald-400 border border-emerald-800/40 px-1.5 py-0.5 rounded font-mono font-bold tracking-wide">
+              Clean
+            </span>
+          </div>
+        </div>
+
+        <div v-if="pageInfo.findings && pageInfo.findings.length > 0" class="flex flex-col gap-1.5 mt-1 max-h-[200px] overflow-y-auto pr-1">
+          <div v-for="(finding, index) in pageInfo.findings" :key="index"
+               class="rounded-lg border border-slate-800/40 overflow-hidden transition-all duration-200 shrink-0"
+               :class="[
+                 expandedLeak === index ? 'bg-slate-950/60' : 'hover:bg-slate-950/30',
+                 finding.severity === 'critical' ? 'border-rose-950/30' : (finding.severity === 'warning' ? 'border-amber-950/30' : '')
+               ]">
+            <!-- Header click target -->
+            <div class="flex items-center justify-between text-xs py-2 px-2.5 cursor-pointer select-none"
+                 @click="toggleLeak(index)">
+              <div class="flex items-center gap-1.5 min-w-0">
+                <span class="text-[9px] text-slate-500 transition-transform duration-200" :class="expandedLeak === index ? 'rotate-90' : ''">▶</span>
+                <span class="font-medium text-slate-300 truncate text-[11px]">{{ finding.label }}</span>
+                <span class="font-mono text-[10px] text-slate-500 truncate max-w-[120px]">{{ finding.key }}</span>
+              </div>
+              <span class="px-1.5 py-0.5 rounded text-[8px] font-bold tracking-wide uppercase border"
+                    :class="finding.severity === 'critical' ? 'bg-rose-950/60 text-rose-400 border-rose-800/40' : 
+                            (finding.severity === 'warning' ? 'bg-amber-950/60 text-amber-400 border-amber-800/40' : 
+                                                              'bg-slate-900/60 text-slate-300 border-slate-800/40')">
+                {{ finding.severity }}
+              </span>
+            </div>
+
+            <!-- Expanded Details -->
+            <div v-if="expandedLeak === index" class="px-2.5 pb-2.5 pt-1.5 border-t border-slate-900/60 bg-slate-950/40 text-[10px] flex flex-col gap-2">
+              <div class="flex flex-col gap-1 font-mono text-[9px] text-slate-500">
+                <span>Location: {{ finding.location }}</span>
+                <span>Value: {{ finding.key }}</span>
+              </div>
+              
+              <div class="flex flex-col gap-1">
+                <span class="text-[9px] text-slate-500 font-semibold uppercase tracking-wider">Context Snippet:</span>
+                <div class="p-1.5 rounded bg-slate-950/90 border border-slate-800/60 font-mono text-[10px] text-rose-300/80 break-all select-all">
+                  {{ finding.context }}
+                </div>
+              </div>
+
+              <div class="flex flex-col gap-0.5 leading-relaxed text-slate-400">
+                <span class="text-[9px] text-slate-500 font-semibold uppercase tracking-wider">Explanation & Fix:</span>
+                <p>{{ finding.description }}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div v-else class="flex items-center gap-1.5 p-2 rounded border border-emerald-900/30 bg-emerald-950/10 text-emerald-400 text-xs">
+          <span class="font-bold">✔</span>
+          <span class="font-medium leading-normal">No exposed credentials, AWS keys, Stripe tokens, private IPs, or emails leaked in public source scripts or comments.</span>
         </div>
       </div>
 
