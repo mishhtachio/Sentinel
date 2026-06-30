@@ -5,6 +5,8 @@ import { analyzeHeaders } from "./background/background";
 import type { SecurityHeaders } from "./analyze/headers";
 import { runPathAudit } from "./analyze/paths";
 import type { PathFinding } from "./analyze/paths";
+import { evaluateCSP } from "./analyze/csp";
+import type { CspWarning } from "./analyze/csp";
 
 const pageInfo = ref<PageInfo>({
   title: "Not detected",
@@ -183,6 +185,34 @@ const headerDetails: { key: keyof SecurityHeaders; label: string; invertStatus?:
   }
 ];
 
+const cspWarnings = ref<CspWarning[]>([]);
+
+function getHeaderStatus(h: typeof headerDetails[0]): 'Secure' | 'Weak' | 'Missing' | 'Leaking' {
+  if (!headersInfo.value) return 'Missing';
+  
+  const isPresent = h.invertStatus ? !headersInfo.value[h.key] : headersInfo.value[h.key];
+  if (!isPresent) {
+    return h.invertStatus ? 'Leaking' : 'Missing';
+  }
+  
+  if (h.key === 'csp' && cspWarnings.value.length > 0) {
+    return 'Weak';
+  }
+  
+  return 'Secure';
+}
+
+function getHeaderStatusClass(h: typeof headerDetails[0]): string {
+  const status = getHeaderStatus(h);
+  if (status === 'Secure') {
+    return 'bg-emerald-950/60 text-emerald-400 border border-emerald-800/40';
+  } else if (status === 'Weak') {
+    return 'bg-amber-950/60 text-amber-400 border border-amber-800/40';
+  } else {
+    return 'bg-rose-950/60 text-rose-400 border border-rose-800/40';
+  }
+}
+
 onMounted(async () => {
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -219,6 +249,13 @@ onMounted(async () => {
     
     if (responseHeaders && responseHeaders.length > 0) {
       headersInfo.value = analyzeHeaders(responseHeaders);
+      
+      const cspHeader = responseHeaders.find((h: any) => h.name.toLowerCase() === 'content-security-policy');
+      if (cspHeader && cspHeader.value) {
+        cspWarnings.value = evaluateCSP(cspHeader.value);
+      } else {
+        cspWarnings.value = [];
+      }
     }
 
     try {
@@ -294,15 +331,37 @@ onMounted(async () => {
                 <span class="text-[10px] transition-transform duration-200" :class="expandedHeader === h.key ? 'rotate-90' : ''">▶</span>
                 <span class="font-medium text-slate-300">{{ h.label }}</span>
               </div>
-              <span class="px-2 py-0.5 rounded text-[10px] font-semibold tracking-wide"
-                    :class="(h.invertStatus ? !headersInfo[h.key] : headersInfo[h.key]) 
-                      ? 'bg-emerald-950/60 text-emerald-400 border border-emerald-800/40' 
-                      : 'bg-rose-950/60 text-rose-400 border border-rose-800/40'">
-                {{ (h.invertStatus ? !headersInfo[h.key] : headersInfo[h.key]) ? 'Secure' : (h.invertStatus ? 'Leaking' : 'Missing') }}
+              <span class="px-2 py-0.5 rounded text-[10px] font-semibold tracking-wide border"
+                    :class="getHeaderStatusClass(h)">
+                {{ getHeaderStatus(h) }}
               </span>
             </div>
-            <div v-if="expandedHeader === h.key" class="px-2.5 pb-2.5 pt-0.5">
+            <div v-if="expandedHeader === h.key" class="px-2.5 pb-2.5 pt-0.5 flex flex-col gap-2">
               <p class="text-[11px] text-slate-400 leading-relaxed">{{ h.explain }}</p>
+              
+              <!-- CSP Warnings details nested -->
+              <div v-if="h.key === 'csp' && cspWarnings.length > 0" class="flex flex-col gap-1.5 mt-1 border-t border-slate-900/60 pt-2">
+                <span class="text-[9px] text-slate-500 font-semibold uppercase tracking-wider">CSP Analysis Findings:</span>
+                <div v-for="(warn, wIdx) in cspWarnings" :key="wIdx" 
+                     class="flex gap-1.5 items-start p-2 rounded border text-[10px] leading-normal"
+                     :class="warn.severity === 'critical' ? 'border-rose-900/30 bg-rose-950/20' : 'border-amber-900/30 bg-amber-950/20'">
+                  <span class="font-bold shrink-0 leading-none mt-0.5" 
+                        :class="warn.severity === 'critical' ? 'text-rose-400' : 'text-amber-400'">⚠</span>
+                  <div class="flex-grow">
+                    <h4 class="text-[9px] font-bold uppercase tracking-wider" 
+                        :class="warn.severity === 'critical' ? 'text-rose-300' : 'text-amber-300'">
+                      {{ warn.title }}
+                    </h4>
+                    <p class="text-slate-400 mt-0.5">{{ warn.description }}</p>
+                    <div class="mt-1 font-mono text-[9px] text-slate-500">
+                      Directive: <code class="bg-slate-950 px-1 py-0.5 rounded text-slate-400">{{ warn.directive }}</code>
+                      <span v-if="warn.offendingValue">
+                         | Value: <code class="bg-slate-950 px-1 py-0.5 rounded text-rose-300/85">{{ warn.offendingValue }}</code>
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
