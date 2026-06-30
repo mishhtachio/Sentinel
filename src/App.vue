@@ -3,6 +3,8 @@ import { ref, onMounted, computed } from 'vue';
 import type { PageInfo } from "./types/pageInfo";
 import { analyzeHeaders } from "./background/background";
 import type { SecurityHeaders } from "./analyze/headers";
+import { runPathAudit } from "./analyze/paths";
+import type { PathFinding } from "./analyze/paths";
 
 const pageInfo = ref<PageInfo>({
   title: "Not detected",
@@ -38,6 +40,44 @@ const warningCount = computed(() => {
 const infoCount = computed(() => {
   return pageInfo.value.findings?.filter(f => f.severity === 'info').length || 0;
 });
+
+// Path Exposure Scanner State
+const pathFindings = ref<PathFinding[]>([]);
+const pathScanState = ref<'idle' | 'scanning' | 'done'>('idle');
+const expandedPath = ref<number | null>(null);
+
+function togglePath(index: number) {
+  expandedPath.value = expandedPath.value === index ? null : index;
+}
+
+const criticalPathsCount = computed(() => {
+  return pathFindings.value.filter(f => f.severity === 'critical').length;
+});
+
+const warningPathsCount = computed(() => {
+  return pathFindings.value.filter(f => f.severity === 'warning').length;
+});
+
+async function scanExposedPaths() {
+  if (pathScanState.value === 'scanning') return;
+  
+  pathScanState.value = 'scanning';
+  pathFindings.value = [];
+  expandedPath.value = null;
+  
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (tab && tab.url) {
+      const origin = new URL(tab.url).origin;
+      const results = await runPathAudit(origin);
+      pathFindings.value = results;
+    }
+  } catch (err) {
+    console.error("Error executing path audit:", err);
+  } finally {
+    pathScanState.value = 'done';
+  }
+}
 
 interface CookieIssue {
   title: string;
@@ -422,6 +462,98 @@ onMounted(async () => {
         <div v-else class="flex items-center gap-1.5 p-2 rounded border border-emerald-900/30 bg-emerald-950/10 text-emerald-400 text-xs">
           <span class="font-bold">✔</span>
           <span class="font-medium leading-normal">No exposed credentials, AWS keys, Stripe tokens, private IPs, or emails leaked in public source scripts or comments.</span>
+        </div>
+      </div>
+
+      <!-- Path Exposure Scanner Panel -->
+      <div class="panel">
+        <div class="flex items-center justify-between">
+          <h3 class="panel-title mb-0">Path Exposure Scanner</h3>
+          
+          <div v-if="pathScanState === 'done'" class="flex gap-1">
+            <span v-if="criticalPathsCount > 0" class="text-[8px] bg-rose-950/60 text-rose-400 border border-rose-800/40 px-1.5 py-0.5 rounded font-mono font-bold tracking-wide animate-pulse">
+              {{ criticalPathsCount }} Critical
+            </span>
+            <span v-if="warningPathsCount > 0" class="text-[8px] bg-amber-950/60 text-amber-400 border border-amber-800/40 px-1.5 py-0.5 rounded font-mono font-bold tracking-wide">
+              {{ warningPathsCount }} Warn
+            </span>
+            <span v-if="pathFindings.length === 0" class="text-[8px] bg-emerald-950/60 text-emerald-400 border border-emerald-800/40 px-1.5 py-0.5 rounded font-mono font-bold tracking-wide">
+              Secure
+            </span>
+          </div>
+        </div>
+
+        <!-- IDLE STATE -->
+        <div v-if="pathScanState === 'idle'" class="flex flex-col gap-2.5">
+          <p class="text-[11px] text-slate-400 leading-relaxed">
+            Check if this website exposes sensitive backend configurations, API documentation, or source code histories (e.g. <code>.env</code>, <code>.git</code>).
+          </p>
+          <button @click="scanExposedPaths" 
+                  class="w-full py-2 px-3 rounded-lg bg-cyan-950/40 hover:bg-cyan-900/50 border border-cyan-800/35 text-cyan-400 font-semibold text-xs tracking-wider transition-all duration-200 cursor-pointer text-center">
+            Scan Exposed Paths
+          </button>
+        </div>
+
+        <!-- SCANNING STATE -->
+        <div v-else-if="pathScanState === 'scanning'" class="flex flex-col items-center justify-center py-4 gap-2">
+          <div class="flex items-center gap-1.5 text-xs text-slate-400 font-medium animate-pulse">
+            <span class="w-2.5 h-2.5 rounded-full border-2 border-cyan-400 border-t-transparent animate-spin shrink-0"></span>
+            Probing paths for exposed secrets...
+          </div>
+        </div>
+
+        <!-- DONE STATE -->
+        <div v-else-if="pathScanState === 'done'" class="flex flex-col gap-2.5">
+          <div v-if="pathFindings.length > 0" class="flex flex-col gap-1.5 max-h-[180px] overflow-y-auto pr-1">
+            <div v-for="(finding, index) in pathFindings" :key="index"
+                 class="rounded-lg border border-slate-800/40 overflow-hidden transition-all duration-200 shrink-0"
+                 :class="[
+                   expandedPath === index ? 'bg-slate-950/60' : 'hover:bg-slate-950/30',
+                   finding.severity === 'critical' ? 'border-rose-950/30' : 'border-amber-950/30'
+                 ]">
+              <!-- Header click target -->
+              <div class="flex items-center justify-between text-xs py-2 px-2.5 cursor-pointer select-none"
+                   @click="togglePath(index)">
+                <div class="flex items-center gap-1.5 min-w-0">
+                  <span class="text-[9px] text-slate-500 transition-transform duration-200" :class="expandedPath === index ? 'rotate-90' : ''">▶</span>
+                  <span class="font-medium text-slate-300 truncate text-[11px]">{{ finding.label }}</span>
+                  <span class="font-mono text-[9px] text-slate-500 truncate">{{ finding.path }}</span>
+                </div>
+                <span class="px-1.5 py-0.5 rounded text-[8px] font-bold tracking-wide uppercase border shrink-0"
+                      :class="finding.severity === 'critical' ? 'bg-rose-950/60 text-rose-400 border-rose-800/40' : 
+                                                                'bg-amber-950/60 text-amber-400 border-amber-800/40'">
+                  {{ finding.severity }}
+                </span>
+              </div>
+
+              <!-- Expanded Details -->
+              <div v-if="expandedPath === index" class="px-2.5 pb-2.5 pt-1.5 border-t border-slate-900/60 bg-slate-950/40 text-[10px] flex flex-col gap-2">
+                <div class="flex flex-col gap-0.5">
+                  <span class="text-[9px] text-slate-500 font-semibold uppercase tracking-wider">Leaking File URL:</span>
+                  <a :href="finding.url" target="_blank" class="text-cyan-400 hover:underline break-all font-mono text-[9px]">
+                    {{ finding.url }} ↗
+                  </a>
+                </div>
+
+                <div class="flex flex-col gap-0.5 leading-relaxed text-slate-400">
+                  <span class="text-[9px] text-slate-500 font-semibold uppercase tracking-wider">Vulnerability Details:</span>
+                  <p>{{ finding.description }}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- All common paths secure -->
+          <div v-else class="flex items-start gap-2 p-2.5 rounded border border-emerald-900/30 bg-emerald-950/10 text-emerald-400 text-xs">
+            <span class="font-bold shrink-0">✔</span>
+            <span class="font-medium leading-relaxed">All common files and directory paths checked are protected. Verified that <code>.env</code>, <code>.git</code>, and configuration pages are not exposed.</span>
+          </div>
+
+          <!-- Re-scan button -->
+          <button @click="scanExposedPaths" 
+                  class="w-full py-1.5 px-3 rounded-lg bg-slate-950/40 hover:bg-slate-900/50 border border-slate-800/50 text-slate-400 font-medium text-[11px] tracking-wide transition-all duration-200 cursor-pointer text-center">
+            Run Scan Again
+          </button>
         </div>
       </div>
 
