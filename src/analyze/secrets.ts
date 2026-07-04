@@ -84,8 +84,30 @@ export function scanText(text: string, contextName: string, scanLevel: 'all' | '
     }
 
     rule.regex.lastIndex = 0;
-    let match;
     
+    if (!rule.regex.global) {
+      console.warn(`Regex for ${rule.label} is missing the global 'g' flag. Running single check.`);
+      const singleMatch = rule.regex.exec(text);
+      if (singleMatch) {
+        const value = singleMatch[0];
+        const masked = value.length > 8 ? value.slice(0, 4) + '...' + value.slice(-4) : '***';
+        const start = Math.max(0, singleMatch.index - 30);
+        const end = Math.min(text.length, singleMatch.index + value.length + 30);
+        const rawContext = text.slice(start, end).replace(/\s+/g, ' ');
+        findings.push({
+          type: rule.type,
+          label: rule.label,
+          key: masked,
+          severity: rule.severity,
+          description: rule.description,
+          context: '...' + rawContext.trim() + '...',
+          location: contextName
+        });
+      }
+      continue;
+    }
+
+    let match;
     while ((match = rule.regex.exec(text)) !== null) {
       const value = match[0];
       

@@ -235,11 +235,27 @@ onMounted(async () => {
       return;
     }
 
-    const response = await chrome.tabs.sendMessage(tab.id, { type: "GET_PAGE_INFO" });
-    if (response) {
-      pageInfo.value = response;
-    } else {
-      errorMsg.value = "Unable to read page statistics.";
+    try {
+      const response = await chrome.tabs.sendMessage(tab.id, { type: "GET_PAGE_INFO" });
+      if (response) {
+        pageInfo.value = response;
+      } else {
+        errorMsg.value = "Unable to read page statistics.";
+      }
+    } catch (msgErr) {
+      console.warn("Content script communication failed:", msgErr);
+      errorMsg.value = "Page loaded before installation. Refresh this tab to scan DOM scripts & secrets.";
+      
+      // Setup fallback basic info so the UI remains populated
+      pageInfo.value = {
+        title: tab.title || "Active Page",
+        url: tab.url || "",
+        scripts: 0,
+        links: 0,
+        images: 0,
+        technologies: [],
+        findings: []
+      };
     }
 
     const responseHeaders = await chrome.runtime.sendMessage({ 
