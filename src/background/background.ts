@@ -2,11 +2,16 @@ const headerCache = new Map();
 
 chrome.webRequest.onHeadersReceived.addListener(
     (details) => {
+        if (details.type !== "main_frame") return;
         headerCache.set(details.tabId, details.responseHeaders || []);
     },
     { urls: ["<all_urls>"] },
     ["responseHeaders"]
 );
+
+chrome.tabs.onRemoved.addListener((tabId) => {
+    headerCache.delete(tabId);
+});
 
 chrome.runtime.onMessage.addListener(
     (message, sender, sendResponse) => {
