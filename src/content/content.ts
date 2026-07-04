@@ -1,6 +1,7 @@
 import { scanForFrontendStack } from "../analyze/techs";
 import { scanText } from "../analyze/secrets";
 import type { SecretFinding } from "../analyze/secrets";
+import { scanMixedContent } from "../analyze/mixedContent";
 
 function getComments(contextNode: Node): string[] {
     const comments: string[] = [];
@@ -47,6 +48,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
             images: document.images.length,
             technologies: scanForFrontendStack(),
             findings: findings,
+            mixedContent: scanMixedContent(),
         };
         sendResponse(currentPageInfo);
     }

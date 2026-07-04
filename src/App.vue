@@ -15,13 +15,15 @@ const pageInfo = ref<PageInfo>({
   links: 0,
   images: 0,
   technologies: [],
-  findings: []
+  findings: [],
+  mixedContent: []
 });
 
 const headersInfo = ref<SecurityHeaders | null>(null);
 const errorMsg = ref("");
 const expandedHeader = ref<string | null>(null);
 const expandedLeak = ref<number | null>(null);
+const expandedMixed = ref<number | null>(null);
 
 function toggleHeader(key: string) {
   expandedHeader.value = expandedHeader.value === key ? null : key;
@@ -29,6 +31,10 @@ function toggleHeader(key: string) {
 
 function toggleLeak(index: number) {
   expandedLeak.value = expandedLeak.value === index ? null : index;
+}
+
+function toggleMixed(index: number) {
+  expandedMixed.value = expandedMixed.value === index ? null : index;
 }
 
 const criticalCount = computed(() => {
@@ -41,6 +47,22 @@ const warningCount = computed(() => {
 
 const infoCount = computed(() => {
   return pageInfo.value.findings?.filter(f => f.severity === 'info').length || 0;
+});
+
+const isHttpsPage = computed(() => {
+  return pageInfo.value.url?.toLowerCase().startsWith('https:');
+});
+
+const mixedContentList = computed(() => {
+  return pageInfo.value.mixedContent || [];
+});
+
+const criticalMixedCount = computed(() => {
+  return mixedContentList.value.filter(item => item.type !== 'image').length;
+});
+
+const warningMixedCount = computed(() => {
+  return mixedContentList.value.filter(item => item.type === 'image').length;
 });
 
 // Path Exposure Scanner State
@@ -225,11 +247,13 @@ onMounted(async () => {
     if (tab.url?.startsWith('chrome://') || tab.url?.startsWith('chrome-extension://')) {
       pageInfo.value = {
         title: tab.title || "Chrome System Page",
-        url: tab.url,
+        url: tab.url || "",
         scripts: 0,
         links: 0,
         images: 0,
-        technologies: []
+        technologies: [],
+        findings: [],
+        mixedContent: []
       };
       errorMsg.value = "Cannot audit internal browser pages.";
       return;
@@ -254,7 +278,8 @@ onMounted(async () => {
         links: 0,
         images: 0,
         technologies: [],
-        findings: []
+        findings: [],
+        mixedContent: []
       };
     }
 
@@ -537,6 +562,82 @@ onMounted(async () => {
         <div v-else class="flex items-center gap-1.5 p-2 rounded border border-emerald-900/30 bg-emerald-950/10 text-emerald-400 text-xs">
           <span class="font-bold">✔</span>
           <span class="font-medium leading-normal">No exposed credentials, AWS keys, Stripe tokens, private IPs, or emails leaked in public source scripts or comments.</span>
+        </div>
+      </div>
+
+      <!-- Mixed Content Scanner Panel -->
+      <div class="panel">
+        <div class="flex items-center justify-between">
+          <h3 class="panel-title mb-0">Mixed Content Scanner</h3>
+          
+          <div v-if="isHttpsPage" class="flex gap-1">
+            <span v-if="criticalMixedCount > 0" class="text-[8px] bg-rose-950/60 text-rose-400 border border-rose-800/40 px-1.5 py-0.5 rounded font-mono font-bold tracking-wide animate-pulse">
+              {{ criticalMixedCount }} Blocked
+            </span>
+            <span v-if="warningMixedCount > 0" class="text-[8px] bg-amber-950/60 text-amber-400 border border-amber-800/40 px-1.5 py-0.5 rounded font-mono font-bold tracking-wide">
+              {{ warningMixedCount }} Warning
+            </span>
+            <span v-if="mixedContentList.length === 0" class="text-[8px] bg-emerald-950/60 text-emerald-400 border border-emerald-800/40 px-1.5 py-0.5 rounded font-mono font-bold tracking-wide">
+              Secure
+            </span>
+          </div>
+          <div v-else>
+            <span class="text-[8px] bg-slate-900/60 text-slate-400 border border-slate-800/40 px-1.5 py-0.5 rounded font-mono font-bold tracking-wide">
+              N/A (HTTP)
+            </span>
+          </div>
+        </div>
+
+        <div v-if="!isHttpsPage" class="text-xs text-slate-400 leading-normal p-2 rounded border border-slate-800 bg-slate-950/20">
+          Mixed Content rules do not apply because this website is running over insecure HTTP. All resources are already unencrypted.
+        </div>
+
+        <div v-else-if="mixedContentList.length > 0" class="flex flex-col gap-1.5 mt-2">
+          <div v-for="(item, index) in mixedContentList" :key="index"
+               class="rounded-lg border border-slate-800/40 overflow-hidden transition-all duration-200 shrink-0"
+               :class="[
+                 expandedMixed === index ? 'bg-slate-950/60' : 'hover:bg-slate-950/30',
+                 item.type !== 'image' ? 'border-rose-950/30' : 'border-amber-950/30'
+               ]">
+            <!-- Header Click Target -->
+            <div class="flex items-center justify-between text-xs py-2 px-2.5 cursor-pointer select-none"
+                 @click="toggleMixed(index)">
+              <div class="flex items-center gap-1.5 min-w-0">
+                <span class="text-[9px] text-slate-500 transition-transform duration-200" :class="expandedMixed === index ? 'rotate-90' : ''">▶</span>
+                <span class="font-medium text-slate-300 capitalize text-[11px]">{{ item.type }}</span>
+                <span class="font-mono text-[9px] text-slate-500 truncate max-w-[200px]" :title="item.url">{{ item.url }}</span>
+              </div>
+              <span class="px-1.5 py-0.5 rounded text-[8px] font-mono font-bold uppercase tracking-wide border shrink-0"
+                    :class="item.type !== 'image' ? 'bg-rose-950/60 text-rose-400 border-rose-800/40' : 'bg-amber-950/60 text-amber-400 border-amber-800/40'">
+                {{ item.type !== 'image' ? 'Blocked' : 'Warning' }}
+              </span>
+            </div>
+
+            <!-- Expanded Details -->
+            <div v-if="expandedMixed === index" class="px-2.5 pb-2.5 pt-1.5 border-t border-slate-900/60 bg-slate-950/40 text-[10px] flex flex-col gap-2">
+              <div class="flex flex-col gap-1">
+                <span class="text-[9px] text-slate-500 font-semibold uppercase tracking-wider">HTML Markup:</span>
+                <div class="p-1.5 rounded bg-slate-950/90 border border-slate-800/60 font-mono text-[10px] text-rose-300/85 break-all select-all">
+                  {{ item.element }}
+                </div>
+              </div>
+
+              <div class="flex flex-col gap-0.5 leading-relaxed text-slate-400">
+                <span class="text-[9px] text-slate-500 font-semibold uppercase tracking-wider">Browser Security Behavior:</span>
+                <p v-if="item.type !== 'image'">
+                  Modern browsers block insecure scripts, styles, and iframe elements (Active Mixed Content) entirely when loaded on HTTPS pages. Update this resource to use a secure <code>https://</code> URL.
+                </p>
+                <p v-else>
+                  Browsers will load insecure HTTP images on HTTPS pages, but they degrade the address bar security lock icon (triggering "Not Secure" markers). Update this image source to use a secure <code>https://</code> URL.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div v-else class="flex items-center gap-1.5 p-2 rounded border border-emerald-900/30 bg-emerald-950/10 text-emerald-400 text-xs">
+          <span class="font-bold">✔</span>
+          <span class="font-medium leading-normal">All resources are secure. No insecure mixed content (HTTP assets) detected on this HTTPS website.</span>
         </div>
       </div>
 
