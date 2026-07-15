@@ -16,7 +16,8 @@ const pageInfo = ref<PageInfo>({
   images: 0,
   technologies: [],
   findings: [],
-  mixedContent: []
+  mixedContent: [],
+  unsafeLinks: []
 });
 
 const headersInfo = ref<SecurityHeaders | null>(null);
@@ -24,6 +25,7 @@ const errorMsg = ref("");
 const expandedHeader = ref<string | null>(null);
 const expandedLeak = ref<number | null>(null);
 const expandedMixed = ref<number | null>(null);
+const expandedUnsafeLink = ref<number | null>(null);
 
 function toggleHeader(key: string) {
   expandedHeader.value = expandedHeader.value === key ? null : key;
@@ -35,6 +37,10 @@ function toggleLeak(index: number) {
 
 function toggleMixed(index: number) {
   expandedMixed.value = expandedMixed.value === index ? null : index;
+}
+
+function toggleUnsafeLink(index: number) {
+  expandedUnsafeLink.value = expandedUnsafeLink.value === index ? null : index;
 }
 
 const criticalCount = computed(() => {
@@ -253,7 +259,8 @@ onMounted(async () => {
         images: 0,
         technologies: [],
         findings: [],
-        mixedContent: []
+        mixedContent: [],
+        unsafeLinks: []
       };
       errorMsg.value = "Cannot audit internal browser pages.";
       return;
@@ -279,7 +286,8 @@ onMounted(async () => {
         images: 0,
         technologies: [],
         findings: [],
-        mixedContent: []
+        mixedContent: [],
+        unsafeLinks: []
       };
     }
 
@@ -638,6 +646,67 @@ onMounted(async () => {
         <div v-else class="flex items-center gap-1.5 p-2 rounded border border-emerald-900/30 bg-emerald-950/10 text-emerald-400 text-xs">
           <span class="font-bold">✔</span>
           <span class="font-medium leading-normal">All resources are secure. No insecure mixed content (HTTP assets) detected on this HTTPS website.</span>
+        </div>
+      </div>
+
+      <!-- Link Security Auditor Panel -->
+      <div class="panel">
+        <div class="flex items-center justify-between">
+          <h3 class="panel-title mb-0">Link Security Auditor</h3>
+          
+          <div class="flex gap-1">
+            <span v-if="pageInfo.unsafeLinks && pageInfo.unsafeLinks.length > 0" class="text-[8px] bg-amber-950/60 text-amber-400 border border-amber-800/40 px-1.5 py-0.5 rounded font-mono font-bold tracking-wide">
+              {{ pageInfo.unsafeLinks.length }} Unsafe
+            </span>
+            <span v-else class="text-[8px] bg-emerald-950/60 text-emerald-400 border border-emerald-800/40 px-1.5 py-0.5 rounded font-mono font-bold tracking-wide">
+              Secure
+            </span>
+          </div>
+        </div>
+
+        <div v-if="pageInfo.unsafeLinks && pageInfo.unsafeLinks.length > 0" class="flex flex-col gap-1.5 mt-2">
+          <div v-for="(link, index) in pageInfo.unsafeLinks" :key="index"
+               class="rounded-lg border border-slate-800/40 overflow-hidden transition-all duration-200 shrink-0"
+               :class="expandedUnsafeLink === index ? 'bg-slate-950/60 border-amber-950/30' : 'hover:bg-slate-950/30 border-slate-800/40'">
+            <!-- Header Click Target -->
+            <div class="flex items-center justify-between text-xs py-2 px-2.5 cursor-pointer select-none"
+                 @click="toggleUnsafeLink(index)">
+              <div class="flex items-center gap-1.5 min-w-0">
+                <span class="text-[9px] text-slate-500 transition-transform duration-200" :class="expandedUnsafeLink === index ? 'rotate-90' : ''">▶</span>
+                <span class="font-medium text-slate-300 truncate max-w-[140px] text-[11px]">{{ link.text }}</span>
+                <span class="font-mono text-[9px] text-slate-500 truncate max-w-[165px]" :title="link.href">{{ link.href }}</span>
+              </div>
+              <span class="px-1.5 py-0.5 rounded text-[8px] bg-amber-950/60 text-amber-400 border border-amber-800/40 font-mono font-bold uppercase tracking-wide shrink-0">
+                Tabnabbing
+              </span>
+            </div>
+
+            <!-- Expanded Details -->
+            <div v-if="expandedUnsafeLink === index" class="px-2.5 pb-2.5 pt-1.5 border-t border-slate-900/60 bg-slate-950/40 text-[10px] flex flex-col gap-2">
+              <div class="flex flex-col gap-1">
+                <span class="text-[9px] text-slate-500 font-semibold uppercase tracking-wider">HTML Element Markup:</span>
+                <div class="p-1.5 rounded bg-slate-950/90 border border-slate-800/60 font-mono text-[10px] text-amber-300/85 break-all select-all">
+                  {{ link.element }}
+                </div>
+              </div>
+
+              <div class="flex flex-col gap-0.5 leading-relaxed text-slate-400">
+                <span class="text-[9px] text-slate-500 font-semibold uppercase tracking-wider">Security Risk:</span>
+                <p>
+                  This link opens in a new tab (<code>target="_blank"</code>) but is missing safety attributes. The new page can access this tab's window object via <code>window.opener</code>. If the destination site is compromised, it could silently redirect your original page to a phishing clone.
+                </p>
+                <span class="text-[9px] text-slate-500 font-semibold uppercase tracking-wider mt-1">Recommended Fix:</span>
+                <p>
+                  Add <code>rel="noopener"</code> or <code>rel="noreferrer"</code> to the link to sever this window connection.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div v-else class="flex items-center gap-1.5 p-2 rounded border border-emerald-900/30 bg-emerald-950/10 text-emerald-400 text-xs">
+          <span class="font-bold">✔</span>
+          <span class="font-medium leading-normal">All links secure. No links opening in new tabs are vulnerable to tabnabbing hijackings.</span>
         </div>
       </div>
 
