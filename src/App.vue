@@ -7,6 +7,7 @@ import { runPathAudit } from "./analyze/paths";
 import type { PathFinding } from "./analyze/paths";
 import { evaluateCSP } from "./analyze/csp";
 import type { CspWarning } from "./analyze/csp";
+import { generateMarkdownReport } from "./analyze/report";
 
 const pageInfo = ref<PageInfo>({
   title: "Not detected",
@@ -238,6 +239,27 @@ function getHeaderStatusClass(h: typeof headerDetails[0]): string {
     return 'bg-amber-950/60 text-amber-400 border border-amber-800/40';
   } else {
     return 'bg-rose-950/60 text-rose-400 border border-rose-800/40';
+  }
+}
+
+const reportCopied = ref(false);
+
+async function copyMarkdownReport() {
+  const md = generateMarkdownReport(
+    pageInfo.value,
+    headersInfo.value as any,
+    cspWarnings.value,
+    cookiesList.value,
+    pathFindings.value
+  );
+  try {
+    await navigator.clipboard.writeText(md);
+    reportCopied.value = true;
+    setTimeout(() => {
+      reportCopied.value = false;
+    }, 2000);
+  } catch (err) {
+    console.error("Failed to copy report to clipboard:", err);
   }
 }
 
@@ -846,6 +868,14 @@ onMounted(async () => {
             No frontend technologies detected
           </span>
         </div>
+      </div>
+
+      <!-- Export Actions -->
+      <div class="panel mt-1 shrink-0">
+        <button @click="copyMarkdownReport"
+                class="w-full py-2 px-3 rounded-lg bg-emerald-950/40 hover:bg-emerald-900/50 border border-emerald-800/35 text-emerald-400 font-semibold text-xs tracking-wider transition-all duration-200 cursor-pointer text-center flex items-center justify-center gap-1.5 select-none">
+          <span>{{ reportCopied ? '✔ Report Copied!' : '📋 Copy Markdown Report' }}</span>
+        </button>
       </div>
 
       <!-- Warning Banner if error occurs -->
